@@ -1,4 +1,4 @@
-FROM php:7.1-fpm-stretch
+FROM php:7.3-fpm-stretch
 
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends apt-utils
@@ -16,11 +16,11 @@ RUN cd /tmp \
     && cd v8 \
 
     # (optional) If you'd like to build a certain version:
-    && git checkout 6.4.388.18 \
+    && git checkout 7.4.195 \
     && gclient sync \
 
     # Setup GN
-    && tools/dev/v8gen.py -vv x64.release -- is_component_build=true \
+    && tools/dev/v8gen.py -vv x64.release -- is_component_build=true use_custom_libcxx=false \
 
     # Build
     && ninja -C out.gn/x64.release/ \
