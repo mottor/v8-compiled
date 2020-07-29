@@ -16,7 +16,7 @@ RUN cd /tmp \
     && cd v8 \
 
     # (optional) If you'd like to build a certain version:
-    && git checkout 7.4.195 \
+    && git checkout 7.4.288.21 \
     && gclient sync \
 
     # Setup GN
@@ -31,6 +31,6 @@ RUN cd /tmp \
         out.gn/x64.release/icudtl.dat /usr/local/lib/ \
     && cp -R include/* /usr/local/include/
 
-# Only for Debian Stretch
 RUN apt-get install -y patchelf
 RUN for A in /usr/local/lib/*.so; do patchelf --set-rpath '$ORIGIN' $A; done
+
