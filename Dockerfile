@@ -1,10 +1,10 @@
-FROM php:8.2.7-fpm-buster
+FROM php:8.2.7-fpm-bullseye
 
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends apt-utils
 
 # Install required dependencies
-RUN apt-get install -y build-essential curl git python libglib2.0-dev
+RUN apt-get install -y build-essential curl git python libglib2.0-dev procps
 
 # Install depot_tools first (needed for source checkout)
 RUN cd /tmp \
