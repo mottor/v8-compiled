@@ -1,4 +1,4 @@
-FROM php:7.3-fpm-stretch
+FROM php:8.2.7-fpm-buster
 
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends apt-utils
@@ -16,7 +16,7 @@ RUN cd /tmp \
     && cd v8 \
 
     # (optional) If you'd like to build a certain version:
-    && git checkout 7.4.195 \
+    && git checkout 12.1.106 \
     && gclient sync \
 
     # Setup GN
