@@ -7,11 +7,8 @@
 
 #include <stdint.h>
 
-#include <vector>
-
 #include "v8-data.h"          // NOLINT(build/include_directory)
 #include "v8-local-handle.h"  // NOLINT(build/include_directory)
-#include "v8-maybe.h"         // NOLINT(build/include_directory)
 #include "v8-snapshot.h"      // NOLINT(build/include_directory)
 #include "v8config.h"         // NOLINT(build/include_directory)
 
@@ -166,69 +163,11 @@ class V8_EXPORT Context : public Data {
    */
   void Exit();
 
-  /**
-   * Delegate to help with Deep freezing embedder-specific objects (such as
-   * JSApiObjects) that can not be frozen natively.
-   */
-  class DeepFreezeDelegate {
-   public:
-    /**
-     * Performs embedder-specific operations to freeze the provided embedder
-     * object. The provided object *will* be frozen by DeepFreeze after this
-     * function returns, so only embedder-specific objects need to be frozen.
-     * This function *may not* create new JS objects or perform JS allocations.
-     * Any v8 objects reachable from the provided embedder object that should
-     * also be considered for freezing should be added to the children_out
-     * parameter. Returns true if the operation completed successfully.
-     */
-    V8_DEPRECATE_SOON("Please use the version that takes a LocalVector&")
-    virtual bool FreezeEmbedderObjectAndGetChildren(
-        Local<Object> obj, std::vector<Local<Object>>& children_out) {
-      // TODO(chromium:1454114): This method is temporarily defined in order to
-      // smoothen the transition to the version that follows.
-      return true;
-    }
-    virtual bool FreezeEmbedderObjectAndGetChildren(
-        Local<Object> obj, LocalVector<Object>& children_out) {
-      // TODO(chromium:1454114): This method is temporarily defined and
-      // calls the previous version, soon to be deprecated, in order to
-      // smoothen the transition. When deprecation is completed, this
-      // will become an abstract method.
-      std::vector<Local<Object>> children;
-      START_ALLOW_USE_DEPRECATED()
-      // Temporarily use the old callback.
-      bool result = FreezeEmbedderObjectAndGetChildren(obj, children);
-      END_ALLOW_USE_DEPRECATED()
-      children_out.insert(children_out.end(), children.begin(), children.end());
-      return result;
-    }
-  };
-
-  /**
-   * Attempts to recursively freeze all objects reachable from this context.
-   * Some objects (generators, iterators, non-const closures) can not be frozen
-   * and will cause this method to throw an error. An optional delegate can be
-   * provided to help freeze embedder-specific objects.
-   *
-   * Freezing occurs in two steps:
-   * 1. "Marking" where we iterate through all objects reachable by this
-   *    context, accumulating a list of objects that need to be frozen and
-   *    looking for objects that can't be frozen. This step is separated because
-   *    it is more efficient when we can assume there is no garbage collection.
-   * 2. "Freezing" where we go through the list of objects and freezing them.
-   *    This effectively requires copying them so it may trigger garbage
-   *    collection.
-   */
-  Maybe<void> DeepFreeze(DeepFreezeDelegate* delegate = nullptr);
-
   /** Returns the isolate associated with a current context. */
   Isolate* GetIsolate();
 
   /** Returns the microtask queue associated with a current context. */
   MicrotaskQueue* GetMicrotaskQueue();
-
-  /** Sets the microtask queue associated with the current context. */
-  void SetMicrotaskQueue(MicrotaskQueue* queue);
 
   /**
    * The field at kDebugIdIndex used to be reserved for the inspector.
@@ -306,12 +245,6 @@ class V8_EXPORT Context : public Data {
   void SetErrorMessageForCodeGenerationFromStrings(Local<String> message);
 
   /**
-   * Sets the error description for the exception that is thrown when
-   * wasm code generation is not allowed.
-   */
-  void SetErrorMessageForWasmCodeGeneration(Local<String> message);
-
-  /**
    * Return data that was previously attached to the context snapshot via
    * SnapshotCreator, and removes the reference to it.
    * Repeated call with the same index returns an empty MaybeLocal.
@@ -351,7 +284,6 @@ class V8_EXPORT Context : public Data {
                        Local<Function> after_hook,
                        Local<Function> resolve_hook);
 
-  bool HasTemplateLiteralObject(Local<Value> object);
   /**
    * Stack-allocated class which sets the execution context for all
    * operations executed within a local scope.
@@ -380,6 +312,17 @@ class V8_EXPORT Context : public Data {
      */
     explicit BackupIncumbentScope(Local<Context> backup_incumbent_context);
     ~BackupIncumbentScope();
+
+    /**
+     * Returns address that is comparable with JS stack address.  Note that JS
+     * stack may be allocated separately from the native stack.  See also
+     * |TryCatch::JSStackComparableAddressPrivate| for details.
+     */
+    V8_DEPRECATED(
+        "This is private V8 information that should not be exposed in the API.")
+    uintptr_t JSStackComparableAddress() const {
+      return JSStackComparableAddressPrivate();
+    }
 
    private:
     friend class internal::Isolate;
@@ -414,7 +357,7 @@ Local<Value> Context::GetEmbedderData(int index) {
 #ifndef V8_ENABLE_CHECKS
   using A = internal::Address;
   using I = internal::Internals;
-  A ctx = internal::ValueHelper::ValueAsAddress(this);
+  A ctx = *reinterpret_cast<const A*>(this);
   A embedder_data =
       I::ReadTaggedPointerField(ctx, I::kNativeContextEmbedderDataOffset);
   int value_offset =
@@ -423,31 +366,34 @@ Local<Value> Context::GetEmbedderData(int index) {
 #ifdef V8_COMPRESS_POINTERS
   // We read the full pointer value and then decompress it in order to avoid
   // dealing with potential endiannes issues.
-  value = I::DecompressTaggedField(embedder_data, static_cast<uint32_t>(value));
+  value =
+      I::DecompressTaggedAnyField(embedder_data, static_cast<uint32_t>(value));
 #endif
-
-  auto isolate = reinterpret_cast<v8::Isolate*>(
-      internal::IsolateFromNeverReadOnlySpaceObject(ctx));
-  return Local<Value>::New(isolate, value);
+  internal::Isolate* isolate = internal::IsolateFromNeverReadOnlySpaceObject(
+      *reinterpret_cast<A*>(this));
+  A* result = HandleScope::CreateHandle(isolate, value);
+  return Local<Value>(reinterpret_cast<Value*>(result));
 #else
   return SlowGetEmbedderData(index);
 #endif
 }
 
 void* Context::GetAlignedPointerFromEmbedderData(int index) {
-#if !defined(V8_ENABLE_CHECKS)
+#ifndef V8_ENABLE_CHECKS
   using A = internal::Address;
   using I = internal::Internals;
-  A ctx = internal::ValueHelper::ValueAsAddress(this);
+  A ctx = *reinterpret_cast<const A*>(this);
   A embedder_data =
       I::ReadTaggedPointerField(ctx, I::kNativeContextEmbedderDataOffset);
-  int value_offset = I::kEmbedderDataArrayHeaderSize +
-                     (I::kEmbedderDataSlotSize * index) +
-                     I::kEmbedderDataSlotExternalPointerOffset;
-  Isolate* isolate = I::GetIsolateForSandbox(ctx);
+  int value_offset =
+      I::kEmbedderDataArrayHeaderSize + (I::kEmbedderDataSlotSize * index);
+#ifdef V8_SANDBOXED_EXTERNAL_POINTERS
+  value_offset += I::kEmbedderDataSlotRawPayloadOffset;
+#endif
+  internal::Isolate* isolate = I::GetIsolateForSandbox(ctx);
   return reinterpret_cast<void*>(
-      I::ReadExternalPointerField<internal::kEmbedderDataSlotPayloadTag>(
-          isolate, embedder_data, value_offset));
+      I::ReadExternalPointerField(isolate, embedder_data, value_offset,
+                                  internal::kEmbedderDataSlotPayloadTag));
 #else
   return SlowGetAlignedPointerFromEmbedderData(index);
 #endif
@@ -455,12 +401,9 @@ void* Context::GetAlignedPointerFromEmbedderData(int index) {
 
 template <class T>
 MaybeLocal<T> Context::GetDataFromSnapshotOnce(size_t index) {
-  auto slot = GetDataFromSnapshotOnce(index);
-  if (slot) {
-    internal::PerformCastCheck(
-        internal::ValueHelper::SlotAsValue<T, false>(slot));
-  }
-  return Local<T>::FromSlot(slot);
+  T* data = reinterpret_cast<T*>(GetDataFromSnapshotOnce(index));
+  if (data) internal::PerformCastCheck(data);
+  return Local<T>(data);
 }
 
 Context* Context::Cast(v8::Data* data) {

@@ -16,8 +16,6 @@
  */
 namespace v8 {
 
-class Primiitive;
-class Numeric;
 class BigInt;
 class Int32;
 class Integer;
@@ -247,11 +245,6 @@ class V8_EXPORT Value : public Data {
   bool IsWeakSet() const;
 
   /**
-   * Returns true if this value is a WeakRef.
-   */
-  bool IsWeakRef() const;
-
-  /**
    * Returns true if this value is an ArrayBuffer.
    */
   bool IsArrayBuffer() const;
@@ -347,27 +340,10 @@ class V8_EXPORT Value : public Data {
   bool IsWasmModuleObject() const;
 
   /**
-   * Returns true if this value is the WasmNull object.
-   */
-  bool IsWasmNull() const;
-
-  /**
    * Returns true if the value is a Module Namespace Object.
    */
   bool IsModuleNamespaceObject() const;
 
-  /**
-   * Perform `ToPrimitive(value)` as specified in:
-   * https://tc39.es/ecma262/#sec-toprimitive.
-   */
-  V8_WARN_UNUSED_RESULT MaybeLocal<Primitive> ToPrimitive(
-      Local<Context> context) const;
-  /**
-   * Perform `ToNumeric(value)` as specified in:
-   * https://tc39.es/ecma262/#sec-tonumeric.
-   */
-  V8_WARN_UNUSED_RESULT MaybeLocal<Numeric> ToNumeric(
-      Local<Context> context) const;
   /**
    * Perform the equivalent of `BigInt(value)` in JS.
    */
@@ -391,7 +367,7 @@ class V8_EXPORT Value : public Data {
   V8_WARN_UNUSED_RESULT MaybeLocal<String> ToDetailString(
       Local<Context> context) const;
   /**
-   * Perform the equivalent of `Tagged<Object>(value)` in JS.
+   * Perform the equivalent of `Object(value)` in JS.
    */
   V8_WARN_UNUSED_RESULT MaybeLocal<Object> ToObject(
       Local<Context> context) const;
@@ -469,41 +445,6 @@ class V8_EXPORT Value : public Data {
   static void CheckCast(Data* that);
 };
 
-/**
- * Can be used to avoid repeated expensive type checks for groups of objects
- * that are expected to be similar (e.g. when Blink converts a bunch of
- * JavaScript objects to "ScriptWrappable" after a "HasInstance" check) by
- * making use of V8-internal "hidden classes". An object that has passed the
- * full check can be remembered via {Update}; further objects can be queried
- * using {Matches}.
- * Note that the answer will be conservative/"best-effort": when {Matches}
- * returns true, then the {candidate} can be relied upon to have the same
- * shape/constructor/prototype/etc. as the {baseline}. Otherwise, no reliable
- * statement can be made (the objects might still have indistinguishable shapes
- * for all intents and purposes, but this mechanism, being optimized for speed,
- * couldn't determine that quickly).
- */
-class V8_EXPORT TypecheckWitness {
- public:
-  explicit TypecheckWitness(Isolate* isolate);
-
-  /**
-   * Checks whether {candidate} can cheaply be identified as being "similar"
-   * to the {baseline} that was passed to {Update} earlier.
-   * It's safe to call this on an uninitialized {TypecheckWitness} instance:
-   * it will then return {false} for any input.
-   */
-  V8_INLINE bool Matches(Local<Value> candidate) const;
-
-  /**
-   * Remembers a new baseline for future {Matches} queries.
-   */
-  void Update(Local<Value> baseline);
-
- private:
-  Local<Data> cached_map_;
-};
-
 template <>
 V8_INLINE Value* Value::Cast(Data* value) {
 #ifdef V8_ENABLE_CHECKS
@@ -523,14 +464,10 @@ bool Value::IsUndefined() const {
 bool Value::QuickIsUndefined() const {
   using A = internal::Address;
   using I = internal::Internals;
-  A obj = internal::ValueHelper::ValueAsAddress(this);
-#if V8_STATIC_ROOTS_BOOL
-  return I::is_identical(obj, I::StaticReadOnlyRoot::kUndefinedValue);
-#else
+  A obj = *reinterpret_cast<const A*>(this);
   if (!I::HasHeapObjectTag(obj)) return false;
   if (I::GetInstanceType(obj) != I::kOddballType) return false;
   return (I::GetOddballKind(obj) == I::kUndefinedOddballKind);
-#endif  // V8_STATIC_ROOTS_BOOL
 }
 
 bool Value::IsNull() const {
@@ -544,14 +481,10 @@ bool Value::IsNull() const {
 bool Value::QuickIsNull() const {
   using A = internal::Address;
   using I = internal::Internals;
-  A obj = internal::ValueHelper::ValueAsAddress(this);
-#if V8_STATIC_ROOTS_BOOL
-  return I::is_identical(obj, I::StaticReadOnlyRoot::kNullValue);
-#else
+  A obj = *reinterpret_cast<const A*>(this);
   if (!I::HasHeapObjectTag(obj)) return false;
   if (I::GetInstanceType(obj) != I::kOddballType) return false;
   return (I::GetOddballKind(obj) == I::kNullOddballKind);
-#endif  // V8_STATIC_ROOTS_BOOL
 }
 
 bool Value::IsNullOrUndefined() const {
@@ -563,17 +496,13 @@ bool Value::IsNullOrUndefined() const {
 }
 
 bool Value::QuickIsNullOrUndefined() const {
-#if V8_STATIC_ROOTS_BOOL
-  return QuickIsNull() || QuickIsUndefined();
-#else
   using A = internal::Address;
   using I = internal::Internals;
-  A obj = internal::ValueHelper::ValueAsAddress(this);
+  A obj = *reinterpret_cast<const A*>(this);
   if (!I::HasHeapObjectTag(obj)) return false;
   if (I::GetInstanceType(obj) != I::kOddballType) return false;
   int kind = I::GetOddballKind(obj);
   return kind == I::kNullOddballKind || kind == I::kUndefinedOddballKind;
-#endif  // V8_STATIC_ROOTS_BOOL
 }
 
 bool Value::IsString() const {
@@ -587,22 +516,9 @@ bool Value::IsString() const {
 bool Value::QuickIsString() const {
   using A = internal::Address;
   using I = internal::Internals;
-  A obj = internal::ValueHelper::ValueAsAddress(this);
+  A obj = *reinterpret_cast<const A*>(this);
   if (!I::HasHeapObjectTag(obj)) return false;
-#if V8_STATIC_ROOTS_BOOL && !V8_MAP_PACKING
-  return I::CheckInstanceMapRange(obj, I::StaticReadOnlyRoot::kFirstStringMap,
-                                  I::StaticReadOnlyRoot::kLastStringMap);
-#else
   return (I::GetInstanceType(obj) < I::kFirstNonstringType);
-#endif  // V8_STATIC_ROOTS_BOOL
-}
-
-bool TypecheckWitness::Matches(Local<Value> candidate) const {
-  internal::Address obj = internal::ValueHelper::ValueAsAddress(*candidate);
-  internal::Address obj_map = internal::Internals::LoadMap(obj);
-  internal::Address cached =
-      internal::ValueHelper::ValueAsAddress(*cached_map_);
-  return obj_map == cached;
 }
 
 }  // namespace v8

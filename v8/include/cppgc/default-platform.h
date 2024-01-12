@@ -19,6 +19,15 @@ namespace cppgc {
  */
 class V8_EXPORT DefaultPlatform : public Platform {
  public:
+  /**
+   * Use this method instead of 'cppgc::InitializeProcess' when using
+   * 'cppgc::DefaultPlatform'. 'cppgc::DefaultPlatform::InitializeProcess'
+   * will initialize cppgc and v8 if needed (for non-standalone builds).
+   *
+   * \param platform DefaultPlatform instance used to initialize cppgc/v8.
+   */
+  static void InitializeProcess(DefaultPlatform* platform);
+
   using IdleTaskSupport = v8::platform::IdleTaskSupport;
   explicit DefaultPlatform(
       int thread_pool_size = 0,
@@ -53,8 +62,6 @@ class V8_EXPORT DefaultPlatform : public Platform {
   TracingController* GetTracingController() override {
     return v8_platform_->GetTracingController();
   }
-
-  v8::Platform* GetV8Platform() const { return v8_platform_.get(); }
 
  protected:
   static constexpr v8::Isolate* kNoIsolate = nullptr;

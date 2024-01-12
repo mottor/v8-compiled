@@ -16,7 +16,7 @@ RUN cd /tmp \
     && cd v8 \
 
     # (optional) If you'd like to build a certain version:
-    && git checkout 12.1.106 \
+    && git checkout 9.9.115.10 \
     && gclient sync \
 
     # Setup GN

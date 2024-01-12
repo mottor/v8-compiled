@@ -62,8 +62,7 @@ class GarbageCollected {
   // virtual destructor requires an unambiguous, accessible 'operator delete'.
   void operator delete(void*) {
 #ifdef V8_ENABLE_CHECKS
-    internal::Fatal(
-        "Manually deleting a garbage collected object is not allowed");
+    internal::Abort();
 #endif  // V8_ENABLE_CHECKS
   }
   void operator delete[](void*) = delete;

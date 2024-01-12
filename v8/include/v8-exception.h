@@ -30,21 +30,14 @@ class ThreadLocalTop;
  */
 class V8_EXPORT Exception {
  public:
-  static Local<Value> RangeError(Local<String> message,
-                                 Local<Value> options = {});
-  static Local<Value> ReferenceError(Local<String> message,
-                                     Local<Value> options = {});
-  static Local<Value> SyntaxError(Local<String> message,
-                                  Local<Value> options = {});
-  static Local<Value> TypeError(Local<String> message,
-                                Local<Value> options = {});
-  static Local<Value> WasmCompileError(Local<String> message,
-                                       Local<Value> options = {});
-  static Local<Value> WasmLinkError(Local<String> message,
-                                    Local<Value> options = {});
-  static Local<Value> WasmRuntimeError(Local<String> message,
-                                       Local<Value> options = {});
-  static Local<Value> Error(Local<String> message, Local<Value> options = {});
+  static Local<Value> RangeError(Local<String> message);
+  static Local<Value> ReferenceError(Local<String> message);
+  static Local<Value> SyntaxError(Local<String> message);
+  static Local<Value> TypeError(Local<String> message);
+  static Local<Value> WasmCompileError(Local<String> message);
+  static Local<Value> WasmLinkError(Local<String> message);
+  static Local<Value> WasmRuntimeError(Local<String> message);
+  static Local<Value> Error(Local<String> message);
 
   /**
    * Creates an error message for the given exception.
@@ -176,6 +169,13 @@ class V8_EXPORT TryCatch {
    */
   void SetCaptureMessage(bool value);
 
+  V8_DEPRECATED(
+      "This is private information that should not be exposed by the API")
+  static void* JSStackComparableAddress(TryCatch* handler) {
+    if (handler == nullptr) return nullptr;
+    return reinterpret_cast<void*>(handler->JSStackComparableAddressPrivate());
+  }
+
   TryCatch(const TryCatch&) = delete;
   void operator=(const TryCatch&) = delete;
 
@@ -204,7 +204,7 @@ class V8_EXPORT TryCatch {
 
   void ResetInternal();
 
-  internal::Isolate* i_isolate_;
+  internal::Isolate* isolate_;
   TryCatch* next_;
   void* exception_;
   void* message_obj_;
